@@ -4,7 +4,7 @@ from functools import wraps
 from io import BytesIO
 from logging.config import dictConfig
 
-from datetime import datetime
+from datetime import datetime, date
 
 from flask import Flask, url_for, render_template, session, redirect, json, send_file
 from flask_oauthlib.contrib.client import OAuth, OAuth2Application
@@ -97,112 +97,6 @@ def index():
         "code.html",
         title="Home | oauth token",
         code=json.dumps(xero_access, sort_keys=True, indent=4),
-    )
-
-
-@app.route("/tenants")
-@xero_token_required
-def tenants():
-    identity_api = IdentityApi(api_client)
-    accounting_api = AccountingApi(api_client)
-
-    available_tenants = []
-    for connection in identity_api.get_connections():
-        tenant = serialize(connection)
-        if connection.tenant_type == "ORGANISATION":
-            organisations = accounting_api.get_organisations(
-                xero_tenant_id=connection.tenant_id
-            )
-            tenant["organisations"] = serialize(organisations)
-
-        available_tenants.append(tenant)
-
-    return render_template(
-        "code.html",
-        title="Xero Tenants",
-        code=json.dumps(available_tenants, sort_keys=True, indent=4),
-    )
-
-
-@app.route("/create-contact-person")
-@xero_token_required
-def create_contact_person():
-    xero_tenant_id = get_xero_tenant_id()
-    accounting_api = AccountingApi(api_client)
-
-    contact_person = ContactPerson(
-        first_name="John",
-        last_name="Smith",
-        email_address="john.smith@24locks.com",
-        include_in_emails=True,
-    )
-    contact = Contact(
-        name="FooBar",
-        first_name="Foo",
-        last_name="Bar",
-        email_address="ben.bowden@24locks.com",
-        contact_persons=[contact_person],
-    )
-    contacts = Contacts(contacts=[contact])
-    try:
-        created_contacts = accounting_api.create_contacts(
-            xero_tenant_id, contacts=contacts
-        )  # type: Contacts
-    except AccountingBadRequestException as exception:
-        sub_title = "Error: " + exception.reason
-        code = jsonify(exception.error_data)
-    else:
-        sub_title = "Contact {} created.".format(
-            getvalue(created_contacts, "contacts.0.name", "")
-        )
-        code = serialize_model(created_contacts)
-
-    return render_template(
-        "code.html", title="Create Contacts", code=code, sub_title=sub_title
-    )
-
-
-@app.route("/create-multiple-contacts")
-@xero_token_required
-def create_multiple_contacts():
-    xero_tenant_id = get_xero_tenant_id()
-    accounting_api = AccountingApi(api_client)
-
-    contact = Contact(
-        name="George Jetson",
-        first_name="George",
-        last_name="Jetson",
-        email_address="george.jetson@aol.com",
-    )
-    # Add the same contact twice - the first one will succeed, but the
-    # second contact will fail with a validation error which we'll show.
-    contacts = Contacts(contacts=[contact, contact])
-    try:
-        created_contacts = accounting_api.create_contacts(
-            xero_tenant_id, contacts=contacts, summarize_errors=False
-        )  # type: Contacts
-    except AccountingBadRequestException as exception:
-        sub_title = "Error: " + exception.reason
-        result_list = None
-        code = jsonify(exception.error_data)
-    else:
-        sub_title = ""
-        result_list = []
-        for contact in created_contacts.contacts:
-            if contact.has_validation_errors:
-                error = getvalue(contact.validation_errors, "0.message", "")
-                result_list.append("Error: {}".format(error))
-            else:
-                result_list.append("Contact {} created.".format(contact.name))
-
-        code = serialize_model(created_contacts)
-
-    return render_template(
-        "code.html",
-        title="Create Multiple Contacts",
-        code=code,
-        result_list=result_list,
-        sub_title=sub_title,
     )
 
 #get all invoices
@@ -369,13 +263,15 @@ def create_invoices():
         account_code="200",
         )
 
+    due_date = date(2026, 11, 12)
+
     emptyInvoice = Invoice(
         type="ACCREC",  # Accounts receivable (sales invoice)
         contact=contact,
         line_items=[line_item],
         line_amount_types=LineAmountTypes("Exclusive"),  # Prices exclude tax
-        invoice_number="INV-003",
-        due_date="/Date(1799459200000+0000)/",
+        invoice_number="INV-949",
+        due_date=due_date,
         currency_code=CurrencyCode("AUD"),
         status="DRAFT",  # Draft status for testing
         total=1000.00,
@@ -396,11 +292,11 @@ def create_invoices():
         sub_title = ""
         result_list = []
         for invoice in created_invoices.invoices:
-            if invoice.has_validation_errors:
+            if invoice.has_errors:
                 error = getvalue(invoice.validation_errors, "0.message", "")
                 result_list.append("Error: {}".format(error))
             else:
-                result_list.append("Contact {} created.".format(invoice.invoice_number))
+                result_list.append("Invoice {} created.".format(invoice.invoice_number))
         code = serialize_model(created_invoices)
 
     return render_template(
