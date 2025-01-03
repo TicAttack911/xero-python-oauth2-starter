@@ -225,14 +225,30 @@ def get_invoices():
 
 #get invoice
 #requires invoice_id
-@app.route("/invoice")
+@app.route("/invoiceID")
 @xero_token_required
-def get_invoice():
+def get_invoice_id():
     xero_tenant_id = get_xero_tenant_id()
     accounting_api = AccountingApi(api_client)
 
     invoice = accounting_api.get_invoice(
         xero_tenant_id, invoice_id="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+    )
+    code = serialize_model(invoice)
+    sub_title = "Invoice found:"
+
+    return render_template(
+        "code.html", title="Invoice", code=code, sub_title=sub_title
+    )
+
+@app.route("/invoiceNum")
+@xero_token_required
+def get_invoice_num():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    invoice = accounting_api.get_invoices(
+        xero_tenant_id, invoice_numbers=["INV-949"]
     )
     code = serialize_model(invoice)
     sub_title = "Invoice found:"
@@ -482,9 +498,9 @@ def check_invoices():
     xero_tenant_id = get_xero_tenant_id()
     accounting_api = AccountingApi(api_client)
     invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+    invoice_number2="7e024960-d582-452c-8b62-85308d99595b"
 
-
-    invoice_ids=check_invoices_bool([invoice_number])
+    invoice_ids=check_invoices_bool([invoice_number, invoice_number2])
     code=""
     sub_title=""
     for invoice_id in invoice_ids:
