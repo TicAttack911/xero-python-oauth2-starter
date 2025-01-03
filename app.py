@@ -307,6 +307,7 @@ def create_invoices():
         sub_title=sub_title,
     )
 
+
 #check existing invoice
 #invoice_id/invoice_number
 @app.route("/checkInvoice")
@@ -351,6 +352,240 @@ def check_invoice_bool(invoice_id):
         return False
     else:
         return True
+
+#get invoice
+#requires invoice_id
+@app.route("/invoice")
+@xero_token_required
+def get_invoice():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    invoice = accounting_api.get_invoice(
+        xero_tenant_id, invoice_id="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+    )
+    code = serialize_model(invoice)
+    sub_title = "Invoice found:"
+
+    return render_template(
+        "code.html", title="Invoice", code=code, sub_title=sub_title
+    )
+
+#create invoice
+#requires stuff
+@app.route("/createInvoice")
+@xero_token_required
+def create_invoice():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    contact = Contact(
+        name="John Doe",
+        email_address="john.doe@example.com",
+    )
+
+    line_item = LineItem(
+        description="Consulting services",
+        quantity=10,
+        unit_amount=100.00,
+        account_code="200",
+        )
+    
+    emptyInvoice = Invoice(
+        type="ACCREC",  # Accounts receivable (sales invoice)
+        contact=contact,
+        line_items=[line_item],
+        line_amount_types=LineAmountTypes("Exclusive"),  # Prices exclude tax
+        invoice_number="INV-001",
+        currency_code=CurrencyCode("AUD"),
+        status="DRAFT",  # Draft status for testing
+        total=1000.00,
+        total_tax=100.00,
+        amount_due=1100.00,
+        )
+    
+    invoices = Invoices(invoices=[emptyInvoice])
+
+    try:
+        created_invoices = accounting_api.create_invoices(
+            xero_tenant_id,
+            invoices=invoices
+        )
+    except AccountingBadRequestException as exception:
+        sub_title = "Error: " + exception.reason
+        code = jsonify(exception.error_data)
+    else:
+        sub_title = "Invoice {} created."
+        code = serialize_model(created_invoices)
+
+    return render_template(
+        "code.html",
+        title="Created Invoice",
+        code=code,
+        sub_title=sub_title
+    )
+
+#update invoice
+#requires ?
+@app.route("/updateInvoice")
+@xero_token_required
+def update_invoice():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    oldInvoice = "INV-001"
+    invoice_id=oldInvoice
+    contact = Contact(
+        name="John Doe",
+        email_address="john.doe@example.com",
+    )
+
+    line_item = LineItem(
+        description="Consulting services",
+        quantity=10,
+        unit_amount=100.00,
+        account_code="200",
+        )
+    invoice = Invoice(
+        type="ACCREC",  # Accounts receivable (sales invoice)
+        contact=contact,
+        line_items=[line_item],
+        line_amount_types=LineAmountTypes("Exclusive"),  # Prices exclude tax
+        invoice_number="INV-001",
+        currency_code=CurrencyCode("AUD"),
+        status="DRAFT",  # Draft status for testing
+        total=1000.00,
+        total_tax=100.00,
+        amount_due=1100.00,
+        )
+
+    invoices = Invoices(invoices=[invoice])
+    try:
+        updated_invoice = accounting_api.update_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id,
+            invoices=invoices
+            )
+    except AccountingBadRequestException as exception:
+        sub_title = "Error: " + exception.reason
+        code = jsonify(exception.error_data)
+    else:
+        sub_title = "Invoice updated."
+        code = serialize_model(updated_invoice)
+
+    return render_template(
+        "code.html",
+        title="Updated Invoice",
+        code=code,
+        sub_title=sub_title
+    )
+
+#create multiple invoices
+#requires multiple invoices in array
+@app.route("/createInvoices")
+@xero_token_required
+def create_invoices():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    contact = Contact(
+        name="John Doe",
+        email_address="john.doe@example.com",
+    )
+
+    line_item = LineItem(
+        description="Consulting services",
+        quantity=10,
+        unit_amount=100.00,
+        account_code="200",
+        )
+
+    emptyInvoice = Invoice(
+        type="ACCREC",  # Accounts receivable (sales invoice)
+        contact=contact,
+        line_items=[line_item],
+        line_amount_types=LineAmountTypes("Exclusive"),  # Prices exclude tax
+        invoice_number="INV-003",
+        due_date="/Date(1799459200000+0000)/",
+        currency_code=CurrencyCode("AUD"),
+        status="DRAFT",  # Draft status for testing
+        total=1000.00,
+        total_tax=100.00,
+        amount_due=1100.00,
+        )
+    
+    invoices = Invoices(invoices=[emptyInvoice])
+    try:
+        created_invoices = accounting_api.create_invoices(
+            xero_tenant_id, invoices=invoices
+        )
+    except AccountingBadRequestException as exception:
+        sub_title = "Error: " + exception.reason
+        result_list = None
+        code = jsonify(exception.error_data)
+    else:
+        sub_title = ""
+        result_list = []
+        for invoice in created_invoices.invoices:
+            if invoice.has_validation_errors:
+                error = getvalue(invoice.validation_errors, "0.message", "")
+                result_list.append("Error: {}".format(error))
+            else:
+                result_list.append("Contact {} created.".format(invoice.invoice_number))
+        code = serialize_model(created_invoices)
+
+    return render_template(
+        "code.html",
+        title="Create Multiple Invoices",
+        code=code,
+        result_list=result_list,
+        sub_title=sub_title,
+    )
+
+#check existing invoice
+#invoice_id/invoice_number
+@app.route("/checkInvoice")
+def check_invoice():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+
+    invoice_id=invoice_number
+    try:
+        invoice = accounting_api.get_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id
+        )
+    except:
+        sub_title = "No invoice with invoice id " + invoice_id + " exists."
+        code =jsonify("")
+    else:
+        sub_title = "A invoice with invoice id " + invoice_id + " exists."
+        code = serialize_model(invoice)
+
+    return render_template(
+        "code.html",
+        title="Invoice check",
+        code=code,
+        sub_title=sub_title,
+    )
+    
+def check_invoice_bool(invoice_id):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    #invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+    #invoice_id=invoice_number
+    try:
+        invoice = accounting_api.get_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id
+        )
+    except:
+        return False
+    else:
+        return True
+
 
 def check_invoices_bool(invoice_ids):
     xero_tenant_id = get_xero_tenant_id()
