@@ -374,7 +374,8 @@ def create_invoices():
         contact=contact,
         line_items=[line_item],
         line_amount_types=LineAmountTypes("Exclusive"),  # Prices exclude tax
-        invoice_number="INV-001",
+        invoice_number="INV-003",
+        due_date="/Date(1799459200000+0000)/",
         currency_code=CurrencyCode("AUD"),
         status="DRAFT",  # Draft status for testing
         total=1000.00,
@@ -408,6 +409,97 @@ def create_invoices():
         code=code,
         result_list=result_list,
         sub_title=sub_title,
+    )
+
+#check existing invoice
+#invoice_id/invoice_number
+@app.route("/checkInvoice")
+def check_invoice():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+
+    invoice_id=invoice_number
+    try:
+        invoice = accounting_api.get_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id
+        )
+    except:
+        sub_title = "No invoice with invoice id " + invoice_id + " exists."
+        code =jsonify("")
+    else:
+        sub_title = "A invoice with invoice id " + invoice_id + " exists."
+        code = serialize_model(invoice)
+
+    return render_template(
+        "code.html",
+        title="Invoice check",
+        code=code,
+        sub_title=sub_title,
+    )
+    
+def check_invoice_bool(invoice_id):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    #invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+    #invoice_id=invoice_number
+    try:
+        invoice = accounting_api.get_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id
+        )
+    except:
+        return False
+    else:
+        return True
+
+def check_invoices_bool(invoice_ids):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    #invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+    #invoice_id=invoice_number
+    exists_array = []
+    for invoice_id in invoice_ids:
+        try:
+            invoice = accounting_api.get_invoice(
+                xero_tenant_id,
+                invoice_id=invoice_id
+                )
+        except:
+            pass
+        else:
+            exists_array.append(invoice_id)
+    return exists_array
+
+#check existing invoices
+#invoice_id/invoice_number
+@app.route("/checkInvoices")
+def check_invoices():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    invoice_number="0e64a623-c2a1-446a-93ed-eb897f118cbc"
+
+
+    invoice_ids=check_invoices_bool([invoice_number])
+    code=""
+    sub_title=""
+    for invoice_id in invoice_ids:
+        invoice = accounting_api.get_invoice(
+            xero_tenant_id,
+            invoice_id=invoice_id
+        )
+        sub_title = sub_title + " " +invoice_id
+        code = code + serialize_model(invoice)
+    
+    return render_template(
+        "code.html",
+        title="Invoice checks",
+        code=code,
+        sub_title="the invoice/s " + sub_title +" exsist"
     )
 
 @app.route("/login")
