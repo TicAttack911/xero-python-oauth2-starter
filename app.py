@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import os
+import json
 from functools import wraps
 from io import BytesIO
 from logging.config import dictConfig
@@ -21,6 +22,11 @@ import logging_settings
 from utils import jsonify, serialize_model
 
 dictConfig(logging_settings.default_settings)
+
+json_file_path = "voltrondata.json"
+
+with open(json_file_path, "r") as file:
+    json_voltron_data = json.load(file)
 
 # configure main flask application
 app = Flask(__name__)
@@ -150,6 +156,118 @@ def get_invoice_num():
     return render_template(
         "code.html", title="Invoice", code=code, sub_title=sub_title
     )
+
+def check_invoice_num_bool(invoice_num):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    try:
+        invoice = accounting_api.get_invoices(
+            xero_tenant_id,
+            invoice_numbers=invoice_num
+        )
+    except:
+        return False
+    else:
+        return True
+
+def check_invoices_num_bool(invoice_nums):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    
+    exists_array = []
+    for invoice_num in invoice_nums:
+        try:
+            invoice = accounting_api.get_invoices(
+                xero_tenant_id,
+                invoice_numbers=invoice_num
+            )
+        except:
+            pass
+        else:
+            exists_array.append(invoice_num)
+    return exists_array
+
+def check_invoices_num_bool_single(invoice_nums):
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    
+    invoice_whole_no = accounting_api.get_invoices(
+                xero_tenant_id
+            )
+    invoice_whole = [invoice.invoice_number for invoice in invoice_whole_no.invoices]
+    #invoice_numbers = [invoice.invoice_number for invoice in invoices.invoices]
+    #invoice_whole=invoice_whole_no.json()
+    #invoice_arrays = [invoice["InvoiceNumber"] for invoice in invoice_whole["Invoices"]]
+    #invoice_arrays = [invoice['InvoiceNumber'] for invoice in invoice_whole['Invoices']]
+
+    return invoice_whole
+
+def check_invoices_num_inverse(invoice_nums):
+    exists_array = check_invoices_num_bool_single(invoice_nums)
+    set_exists_array=set(exists_array)
+    set_invoice_nums =set(invoice_nums)
+    difference = list(set_invoice_nums-set_exists_array)
+    return difference
+
+def insert_invoices_xero(voltron_data):
+    invoice_numbers = [invoice["InvoiceNumber"] for invoice in voltron_data["Invoices"]]
+    return invoice_numbers
+
+def new_json_data(voltron_data):
+    nonduplicate_invoice_data = [invoice for invoice in voltron_data["Invoices"] if invoice["InvoiceNumber"] in check_invoices_num_inverse(insert_invoices_xero(voltron_data))]
+    return nonduplicate_invoice_data
+
+@app.route("/invoice_json")
+@xero_token_required
+def get_json_num():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+    code =""
+    good_array=check_invoices_num_inverse(insert_invoices_xero(json_voltron_data))
+    for invoice_num in good_array:
+        code = code + " " + invoice_num
+    sub_title = "Invoice numbers:"
+
+    return render_template(
+        "code.html", title="Invoice", code=code, sub_title=sub_title
+    )
+
+@app.route("/create_invoices_from_json")
+@xero_token_required
+def create_invoices_from_json():
+    xero_tenant_id = get_xero_tenant_id()
+    accounting_api = AccountingApi(api_client)
+
+    invoices = new_json_data(json_voltron_data)
+
+    try:
+        created_invoices = accounting_api.create_invoices(
+            xero_tenant_id, invoices=invoices
+        )
+    except AccountingBadRequestException as exception:
+        sub_title = "Error: " + exception.reason
+        result_list = None
+        code = jsonify(exception.error_data)
+    else:
+        sub_title = ""
+        result_list = []
+        for invoice in created_invoices.invoices:
+            if invoice.has_errors:
+                error = getvalue(invoice.validation_errors, "0.message", "")
+                result_list.append("Error: {}".format(error))
+            else:
+                result_list.append("Invoice {} created.".format(invoice.invoice_number))
+        code = serialize_model(created_invoices)
+
+    return render_template(
+        "code.html",
+        title="Create Multiple Invoices",
+        code=code,
+        result_list=result_list,
+        sub_title=sub_title,
+    )
+
 
 #create multiple invoices
 #requires multiple invoices in array
